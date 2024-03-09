@@ -11,14 +11,14 @@ import time
 
 use_cloud_resource = False
 
-subscription_id = "eeeee5b2-666a-4f32-bb9f-4d548cd027db"
-resource_group_name = "AZURESTORAGE"
+subscription_id = "XX"
+resource_group_name = "XX"
 
-subscription_id_2 = "18bed606-20b7-4119-ba9d-679a31d8f57e"
-resource_group_name_2 = "rg-BlogCypoint-01"
+subscription_id_2 = "XX"
+resource_group_name_2 = "XX"
 
-subscription_id_3 = "18bed606-20b7-4119-ba9d-679a31d8f57e"
-resource_group_name_3 = "rg-skidev"
+subscription_id_3 = "XX"
+resource_group_name_3 = "XX"
 
 def get_vm_status(compute_client, resource_group, vm_name):
     # Getting the status of a virtual machine
