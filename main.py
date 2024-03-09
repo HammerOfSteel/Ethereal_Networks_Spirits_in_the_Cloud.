@@ -10,44 +10,90 @@ import threading
 import time
 
 use_cloud_resource = False
+selected_cloud_provider = ""
+subscription_id = ""
+resource_group_name = ""
+resources_info = {}
 
-subscription_id = "XX"
-resource_group_name = "XX"
+def init_cloud_resource():
+    if use_cloud_resource:
+        try:
+            # Ask user whick cloud provider:
+            cloud_provider = input("Which cloud provider do you want to use? (1. Azure Cloud, 2. AWS, 3. GCP): ")
+            if cloud_provider == "1":
+                selected_cloud_provider = "Azure"
+                subscription_id = input("Enter your Azure subscription ID: ")
+                resource_group_name = input("Enter your Azure resource group name: ")
+                return selected_cloud_provider, subscription_id, resource_group_name
+            elif cloud_provider == "2":
+                selected_cloud_provider = "AWS"
+                subscription_id = input("Enter your AWS subscription ID: ")
+                resource_group_name = input("Enter your AWS resource group name: ")
+                return selected_cloud_provider, subscription_id, resource_group_name
+            elif cloud_provider == "3":
+                selected_cloud_provider = "GCP"
+                subscription_id = input("Enter your GCP subscription ID: ")
+                resource_group_name = input("Enter your GCP resource group name: ")
+                return selected_cloud_provider, subscription_id, resource_group_name
+            else:
+                print("Invalid cloud provider. Exiting...")
+        except Exception as e:
+            print("Error initializing cloud resource:", e)
 
-subscription_id_2 = "XX"
-resource_group_name_2 = "XX"
-
-subscription_id_3 = "XX"
-resource_group_name_3 = "XX"
 
 def get_vm_status(compute_client, resource_group, vm_name):
-    # Getting the status of a virtual machine
-    vm_instance_view = compute_client.virtual_machines.instance_view(resource_group, vm_name)
-    statuses = vm_instance_view.statuses
-    for status in statuses:
-        if status.code.startswith('PowerState/'):
-            return status.code
-    return 'Unknown'
+    try:
+        # Getting the status of a virtual machine
+        vm_instance_view = compute_client.virtual_machines.instance_view(resource_group, vm_name)
+        statuses = vm_instance_view.statuses
+        for status in statuses:
+            if status.code.startswith('PowerState/'):
+                return status.code
+        return 'Unknown'
+    except Exception as e:
+        print("Error getting the status of the virtual machine:", e)
 
 def list_resources(subscription_id, resource_group_name):
-    credential = DefaultAzureCredential()
-    resource_client = ResourceManagementClient(credential, subscription_id)
-    compute_client = ComputeManagementClient(credential, subscription_id)
+    try:
+        if selected_cloud_provider == "Azure":
+            print("azure")
+            credential = DefaultAzureCredential()
+            # Check if we can get resources using the provided credentials
+            credential.get_token("https://management.azure.com/.default")
+            if not credential:
+                print("Invalid credentials. Exiting...")
+                exit()
+            print("Valid credentials. Proceeding...")
+            resource_client = ResourceManagementClient(credential, subscription_id)
+            compute_client = ComputeManagementClient(credential, subscription_id)
 
-    resource_list = []
-    for resource in resource_client.resources.list_by_resource_group(resource_group_name):
-        if resource.type == 'Microsoft.Compute/virtualMachines':
-            resource_info = {
-                'name': resource.name,
-                'type': resource.type.replace('Microsoft.Compute/', ''),
-            }
-        # Check if the resource is a VM to get its status
-        if resource.type == 'Microsoft.Compute/virtualMachines':
-            resource_info['status'] = get_vm_status(compute_client, resource_group_name, resource.name).replace('PowerState/', '')
-            resource_list.append(resource_info)
+            resource_list = []
+            for resource in resource_client.resources.list_by_resource_group(resource_group_name):
+                if resource.type == 'Microsoft.Compute/virtualMachines':
+                    resource_info = {
+                        'name': resource.name,
+                        'type': resource.type.replace('Microsoft.Compute/', ''),
+                    }
+                # Check if the resource is a VM to get its status
+                if resource.type == 'Microsoft.Compute/virtualMachines':
+                    resource_info['status'] = get_vm_status(compute_client, resource_group_name, resource.name).replace('PowerState/', '')
+                    resource_list.append(resource_info)
 
-    return json.dumps(resource_list, indent=2)
-
+            print(json.dumps(resource_list, indent=2))
+            return json.dumps(resource_list, indent=2)
+        elif selected_cloud_provider == "AWS":
+            print("AWS")
+            # mock implementation:
+            return json.dumps([{"name": "vm-Dev01", "type": "virtualMachines", "status": "running"}])
+        elif selected_cloud_provider == "GCP":
+            print("GCP")
+            # mock implementation:
+            return json.dumps([{"name": "vm-Dev01", "type": "virtualMachines", "status": "running"}])
+        else:
+            print("Invalid cloud provider. Exiting...")
+            exit()
+    except Exception as e:
+        print("Error listing resources:", e)
 
 monitor_info = GetMonitorInfo(MonitorFromPoint((0, 0)))
 work_area = monitor_info.get('Work')
@@ -529,14 +575,10 @@ class Sprite():
         else:
             self.window.geometry('72x64+' + str(self.x) + '+' + str(self.y))
 
-        if self.name == 'vm-skidev':
-            self.status = vm_status_skiidev
-            #print('vm-skidev - status: ' + str(self.status))
-        elif self.name == 'CyclopseDev':
-            self.status = vm_status_cypoint
-            #print('CyclopseDev - status: ' + str(self.status))
-        elif self.name == 'vm-BlogCypoint-01':
-            self.status = vm_status_blog
+        if use_cloud_resource:
+            for resource in resources_info:
+                if resource['name'] == self.name:
+                    self.status = resource['status']
         else:
             self.status = 'running'
             #print('vm-CyclopseDev - status: ' + str(self.status))
@@ -568,41 +610,84 @@ class Sprite():
 def get_resource_status(id1, name1):
     resources_json = list_resources(id1, name1)
     resources = json.loads(resources_json)
-    vm_status = resources[0]['status']
-    return vm_status
+
+    # Get all resource names:
+    resource_names = []
+    for resource in resources:
+        resource_names.append(resource['name'])
+    resource_statuses = []
+    for status in resources:
+        resource_statuses.append(status['status'])
+    
+    # hashtable for resource names and statuses:
+    resources_info = dict(zip(resource_names, resource_statuses))
+    return resources_info
 
 # background task that updates global vm_status_2 variable every 1 min:
 def update_vm_status():
     if use_cloud_resource:
-        while True:
-            global vm_status_cypoint
-            global vm_status_blog
-            global vm_status_skiidev
-            vm_status_skiidev = get_resource_status(subscription_id_3, resource_group_name_3)
-            vm_status_cypoint = get_resource_status(subscription_id, resource_group_name)
-            vm_status_blog = get_resource_status(subscription_id_2, resource_group_name_2)
-            time.sleep(300)
+        try:
+            while True:
+                try:
+                    resources_info = get_resource_status(subscription_id, resource_group_name)
+                except:
+                    #mock implementation
+                    resources_info = {
+                        "vm-CyclopseDev": "running",
+                        "vm-CyclopseDev2": "running"
+                    }
+                time.sleep(300)
+        except Exception as e:
+            print("Error updating resource information:", e)
 
 def create_sprites():
     root = tk.Tk()
     root.withdraw()  # Hide the main Tk window
 
     horizontal_distance = 100  # Distance between each sprite
-
-    # Start the background task to get the vm status
     threading.Thread(target=update_vm_status).start()
-
     if use_cloud_resource:
-        # Load resource information
-        resources_json = list_resources(subscription_id, resource_group_name)
-        resources_json_2 = list_resources(subscription_id_2, resource_group_name_2)
-        resources_json_3 = list_resources(subscription_id_3, resource_group_name_3)
-        resources = json.loads(resources_json)
-        resources_2 = json.loads(resources_json_2)
-        resources_3 = json.loads(resources_json_3)
-        
-        resource_names = [resources_3[0]['name'], resources[0]['name'], resources_2[0]['name']]
-        resource_statuses = [resources_3[0]['status'], resources[0]['status'], resources_2[0]['status']]
+        try:
+            # Load resource information
+            resources_json = list_resources(subscription_id, resource_group_name)
+            resources = json.loads(resources_json)
+        except Exception as e:
+            print("Error loading resource information:", e)
+            exit()
+
+        try:
+            # Get all resource names:
+            resource_names = []
+            for resource in resources:
+                resource_names.append(resource['name'])
+            resource_statuses = []
+            for status in resources:
+                resource_statuses.append(status['status'])
+            resource_types = []
+            for type in resources:
+                resource_types.append(type['type'])
+        except Exception as e:
+            print("Error setting resource information:", e)
+            exit()
+            
+        try:
+            # hashtable for resource names and statuses:
+            resources_info = [{"name": name, "status": status, "type": type} for name, status, type in zip(resource_names, resource_statuses, resource_types)]
+        except Exception as e:
+            print("Error setting resource information to resource_info:", e)
+            exit()
+
+        try:
+            # Get sprite types
+            sprite_types = []
+            for resource_type in resource_types:
+                if resource_type == "Microsoft.Compute/virtualMachines":
+                    sprit_type = "cloud_server"
+                    sprite_types.append(sprit_type)
+        except Exception as e:
+            print("Error setting sprite types:", e)
+            exit()
+
     
     else:
         resource_names = ["vm-Dev01", "kubernetes-Uat-Pod01", "blobStoage-Prod01", "DB-Psql-Test01", "DB-MongoDB-Dev01", "AzureFunction-Uat01", "CDN-Internal01", "IAM-Company", "NLB-Dev01"]
@@ -622,20 +707,28 @@ def create_sprites():
     #sprite_types = ["loadbalancer"]
     sprites = []
 
-    # Determine the starting horizontal position
-    start_x = screen_width // (len(resource_names))
-    for i, sprit_type in enumerate(sprite_types):
-        horizontal_position = start_x + i * horizontal_distance
-        # make sure horizontal_position is inside the screen width:
-        horizontal_position = horizontal_position - 400
-        if horizontal_position > screen_width:
-            horizontal_position = horizontal_position - 300
-        sprite = Sprite(root, sprit_type, horizontal_position, name=resource_names[i], status=resource_statuses[i])
-        sprites.append(sprite)
-    # Update the start position for the next VM
-    start_x += screen_width // len(resource_names) + horizontal_distance
+    try:
+        # Determine the starting horizontal position
+        start_x = screen_width // (len(resource_names))
+        for i, sprit_type in enumerate(sprite_types):
+            horizontal_position = start_x + i * horizontal_distance
+            # make sure horizontal_position is inside the screen width:
+            horizontal_position = horizontal_position - 400
+            if horizontal_position > screen_width:
+                horizontal_position = horizontal_position - 300
+            sprite = Sprite(root, sprit_type, horizontal_position, name=resource_names[i], status=resource_statuses[i])
+            sprites.append(sprite)
+        # Update the start position for the next VM
+        start_x += screen_width // len(resource_names) + horizontal_distance
+    except Exception as e:
+        print("Error creating sprites before starting: ", e)
 
-    root.mainloop()
+    try:
+        root.mainloop()
+    except Exception as e:
+        print("Error running Tkinter mainloop: ", e)
     return sprites
 
+if use_cloud_resource:
+    selected_cloud_provider, subscription_id, resource_group_name = init_cloud_resource()
 create_sprites()
