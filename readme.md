@@ -29,7 +29,7 @@ Prerequisites
 
 ## Installation
 Clone the repository:
-- git clone https://github.com/hammerofsteel/Ethereal_Networks_Spirits_in_the_Cloud.git
+- git clone https://github.com/hammerofsteel/Ethereal_Networks_Spirits_in_the_Cloud..git
 
 Navigate to the project directory:
 - cd Ethereal_Networks_Spirits_in_the_Cloud
