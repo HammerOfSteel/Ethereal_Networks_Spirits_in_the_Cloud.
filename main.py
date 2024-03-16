@@ -3,35 +3,72 @@ import random
 from random import randint
 from win32api import GetMonitorInfo, MonitorFromPoint
 from azure.identity import DefaultAzureCredential
-from azure.mgmt.resource import ResourceManagementClient
+from azure.mgmt.resource import SubscriptionClient, ResourceManagementClient
 from azure.mgmt.compute import ComputeManagementClient
 import json
 import threading
 import time
 
-use_cloud_resource = False
-selected_cloud_provider = ""
+use_cloud_resource = True
 subscription_id = ""
 resource_group_name = ""
 resources_info = {}
+resources_info
+resource_names = []
+resource_statuses = []
+resource_types = []
+
+
+def start():
+    cloud_provider = input("Which cloud provider do you want to use? (1. Azure Cloud, 2. AWS, 3. GCP): ")
+    print(cloud_provider)
+    global selected_cloud_provider
+    if cloud_provider == "1":
+        selected_cloud_provider = "Azure"
+        print(selected_cloud_provider)
+    elif cloud_provider == "2":
+        selected_cloud_provider = "AWS"
+        print(selected_cloud_provider)
+    elif cloud_provider == "3":
+        selected_cloud_provider = "GCP"
+        print(selected_cloud_provider)
+    else:
+        print("Invalid cloud provider. Exiting...")
+        exit()
 
 def init_cloud_resource():
     if use_cloud_resource:
         try:
-            # Ask user whick cloud provider:
-            cloud_provider = input("Which cloud provider do you want to use? (1. Azure Cloud, 2. AWS, 3. GCP): ")
-            if cloud_provider == "1":
-                selected_cloud_provider = "Azure"
-                subscription_id = input("Enter your Azure subscription ID: ")
-                resource_group_name = input("Enter your Azure resource group name: ")
-                return selected_cloud_provider, subscription_id, resource_group_name
-            elif cloud_provider == "2":
-                selected_cloud_provider = "AWS"
+            if selected_cloud_provider == "Azure":
+                azure_info = []
+                try:
+                    credential = DefaultAzureCredential()
+                    subscription_client = SubscriptionClient(credential)
+
+                    # Fetch all Azure subscriptions
+                    subscriptions = subscription_client.subscriptions.list()
+                    for sub in subscriptions:
+                        sub_id = sub.subscription_id
+                        print(f"Fetching resource groups for subscription: {sub.display_name} ({sub_id})")
+
+                        # Fetch all resource groups for this subscription
+                        resource_client = ResourceManagementClient(credential, sub_id)
+                        resource_groups = resource_client.resource_groups.list()
+                        rg_names = [rg.name for rg in resource_groups]
+                        print(sub_id)
+                        print(rg_names)
+                        print("")
+                        azure_info.append((sub_id, rg_names))
+                    return azure_info
+                except Exception as e:
+                    print("Error initializing cloud resource:", e)
+                    return []
+
+            elif selected_cloud_provider == "AWS":
                 subscription_id = input("Enter your AWS subscription ID: ")
                 resource_group_name = input("Enter your AWS resource group name: ")
                 return selected_cloud_provider, subscription_id, resource_group_name
-            elif cloud_provider == "3":
-                selected_cloud_provider = "GCP"
+            elif selected_cloud_provider == "GCP":
                 subscription_id = input("Enter your GCP subscription ID: ")
                 resource_group_name = input("Enter your GCP resource group name: ")
                 return selected_cloud_provider, subscription_id, resource_group_name
@@ -54,6 +91,7 @@ def get_vm_status(compute_client, resource_group, vm_name):
         print("Error getting the status of the virtual machine:", e)
 
 def list_resources(subscription_id, resource_group_name):
+    print("list_resources: subscription_id:", subscription_id, "resource_group_name:", resource_group_name)
     try:
         if selected_cloud_provider == "Azure":
             print("azure")
@@ -607,88 +645,95 @@ class Sprite():
         tk.Label(popup, text=message, wraplength=180).pack(expand=True, pady=10)
         tk.Button(popup, text="Close", command=popup.destroy).pack(pady=5)
 
-def get_resource_status(id1, name1):
-    resources_json = list_resources(id1, name1)
-    resources = json.loads(resources_json)
-
-    # Get all resource names:
-    resource_names = []
-    for resource in resources:
-        resource_names.append(resource['name'])
-    resource_statuses = []
-    for status in resources:
-        resource_statuses.append(status['status'])
-    
-    # hashtable for resource names and statuses:
-    resources_info = dict(zip(resource_names, resource_statuses))
-    return resources_info
 
 # background task that updates global vm_status_2 variable every 1 min:
-def update_vm_status():
-    if use_cloud_resource:
+def update_vm_status(azure_info):
+    global resources_info
+    if use_cloud_resource and selected_cloud_provider == "Azure":
         try:
             while True:
-                try:
-                    resources_info = get_resource_status(subscription_id, resource_group_name)
-                except:
-                    #mock implementation
-                    resources_info = {
-                        "vm-CyclopseDev": "running",
-                        "vm-CyclopseDev2": "running"
-                    }
-                time.sleep(300)
+                for sub_id, rg_names in azure_info:
+                    for rg_name in rg_names:
+                        try:
+                            resources_json = list_resources(sub_id, rg_name)
+                            resources = json.loads(resources_json)
+                            for resource in resources:
+                                name = resource['name']
+                                status = resource['status']
+                                resources_info[name] = status
+                        except Exception as e:
+                            print(f"Error loading resource information for {rg_name}:", e)
+                time.sleep(300)  # Update every 5 minutes
         except Exception as e:
-            print("Error updating resource information:", e)
+            print("Error updating VM status:", e)
+            exit()
+    else:
+        print(f"{selected_cloud_provider} not yet implemented")
+                            
 
 def create_sprites():
     root = tk.Tk()
     root.withdraw()  # Hide the main Tk window
 
     horizontal_distance = 100  # Distance between each sprite
-    threading.Thread(target=update_vm_status).start()
+    #threading.Thread(target=update_vm_status).start()
     if use_cloud_resource:
-        try:
-            # Load resource information
-            resources_json = list_resources(subscription_id, resource_group_name)
-            resources = json.loads(resources_json)
-        except Exception as e:
-            print("Error loading resource information:", e)
-            exit()
+        print("in create sprites")
+        if selected_cloud_provider == "Azure":
+            for info in azure_info:
+                i = 0
+                sub_id = info[0]
+                resource_group_names = info[1]
+                for rg_name in resource_group_names:
+                    try:
+                        resources_json = list_resources(sub_id, rg_name)
+                        resources = json.loads(resources_json)
+                    except Exception as e:
+                        print("Error loading resource information:", e)
+                        exit()
+                    try:
+                        # Get all resource names:
+                        global resource_names
+                        for resource in resources:
+                            resource_names.append(resource['name'])
+                        global resource_statuses
+                        for status in resources:
+                            resource_statuses.append(status['status'])
+                        global resource_types
+                        for type in resources:
+                            resource_types.append(type['type'])
+                    except Exception as e:
+                        print("Error setting resource information:", e)
+                        exit()
 
-        try:
-            # Get all resource names:
-            resource_names = []
-            for resource in resources:
-                resource_names.append(resource['name'])
-            resource_statuses = []
-            for status in resources:
-                resource_statuses.append(status['status'])
-            resource_types = []
-            for type in resources:
-                resource_types.append(type['type'])
-        except Exception as e:
-            print("Error setting resource information:", e)
-            exit()
-            
-        try:
-            # hashtable for resource names and statuses:
-            resources_info = [{"name": name, "status": status, "type": type} for name, status, type in zip(resource_names, resource_statuses, resource_types)]
-        except Exception as e:
-            print("Error setting resource information to resource_info:", e)
-            exit()
+            try:
+                # hashtable for resource names and statuses:
+                resources_info = [{"name": name, "status": status, "type": type} for name, status, type in zip(resource_names, resource_statuses, resource_types)]
+            except Exception as e:
+                print("Error setting resource information to resource_info:", e)
+                exit()
+
+        elif selected_cloud_provider == "AWS":
+            print("AWS")
 
         try:
             # Get sprite types
             sprite_types = []
             for resource_type in resource_types:
-                if resource_type == "Microsoft.Compute/virtualMachines":
+                if resource_type == "virtualMachines":
                     sprit_type = "cloud_server"
                     sprite_types.append(sprit_type)
         except Exception as e:
             print("Error setting sprite types:", e)
             exit()
+        
+        print("before creating sprites")
+        print(resource_names)
+        print(resource_statuses)
+        print(resource_types)
+        print(sprite_types)
 
-    
+
     else:
         resource_names = ["vm-Dev01", "kubernetes-Uat-Pod01", "blobStoage-Prod01", "DB-Psql-Test01", "DB-MongoDB-Dev01", "AzureFunction-Uat01", "CDN-Internal01", "IAM-Company", "NLB-Dev01"]
         resource_statuses = ["running", "running", "running", "running", "running", "running", "running", "running", "running"]
@@ -730,5 +775,10 @@ def create_sprites():
     return sprites
 
 if use_cloud_resource:
-    selected_cloud_provider, subscription_id, resource_group_name = init_cloud_resource()
+    start()
+    print(selected_cloud_provider)
+    if selected_cloud_provider == "Azure":
+        azure_info = init_cloud_resource()
+    else:
+        selected_cloud_provider, subscription_id, resource_group_name = init_cloud_resource()
 create_sprites()
