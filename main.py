@@ -17,21 +17,18 @@ resources_info
 resource_names = []
 resource_statuses = []
 resource_types = []
+azure_info = []
 
 
 def start():
     cloud_provider = input("Which cloud provider do you want to use? (1. Azure Cloud, 2. AWS, 3. GCP): ")
-    print(cloud_provider)
     global selected_cloud_provider
     if cloud_provider == "1":
         selected_cloud_provider = "Azure"
-        print(selected_cloud_provider)
     elif cloud_provider == "2":
         selected_cloud_provider = "AWS"
-        print(selected_cloud_provider)
     elif cloud_provider == "3":
         selected_cloud_provider = "GCP"
-        print(selected_cloud_provider)
     else:
         print("Invalid cloud provider. Exiting...")
         exit()
@@ -40,7 +37,7 @@ def init_cloud_resource():
     if use_cloud_resource:
         try:
             if selected_cloud_provider == "Azure":
-                azure_info = []
+                global azure_info
                 try:
                     credential = DefaultAzureCredential()
                     subscription_client = SubscriptionClient(credential)
@@ -49,15 +46,10 @@ def init_cloud_resource():
                     subscriptions = subscription_client.subscriptions.list()
                     for sub in subscriptions:
                         sub_id = sub.subscription_id
-                        print(f"Fetching resource groups for subscription: {sub.display_name} ({sub_id})")
-
                         # Fetch all resource groups for this subscription
                         resource_client = ResourceManagementClient(credential, sub_id)
                         resource_groups = resource_client.resource_groups.list()
                         rg_names = [rg.name for rg in resource_groups]
-                        print(sub_id)
-                        print(rg_names)
-                        print("")
                         azure_info.append((sub_id, rg_names))
                     return azure_info
                 except Exception as e:
@@ -91,17 +83,13 @@ def get_vm_status(compute_client, resource_group, vm_name):
         print("Error getting the status of the virtual machine:", e)
 
 def list_resources(subscription_id, resource_group_name):
-    print("list_resources: subscription_id:", subscription_id, "resource_group_name:", resource_group_name)
     try:
         if selected_cloud_provider == "Azure":
-            print("azure")
             credential = DefaultAzureCredential()
             # Check if we can get resources using the provided credentials
             credential.get_token("https://management.azure.com/.default")
             if not credential:
-                print("Invalid credentials. Exiting...")
                 exit()
-            print("Valid credentials. Proceeding...")
             resource_client = ResourceManagementClient(credential, subscription_id)
             compute_client = ComputeManagementClient(credential, subscription_id)
 
@@ -560,15 +548,12 @@ class Sprite():
         return self.i_frame, self.event_number
 
     def update(self, i_frame, state, event_number, x):
-
         offset = 10  # This is the offset value. Adjust it as needed.
-
         # Wrap around logic with offset
         if self.x < -offset:
             self.x = screen_width - offset
         elif self.x > screen_width - offset:
             self.x = -offset
-
         if self.state == 0:
             self.frame = self.idle[self.i_frame]
             self.i_frame, self.event_number = self.animate(self.i_frame, self.idle, self.event_number, 1, 18)
@@ -615,7 +600,7 @@ class Sprite():
 
         if use_cloud_resource:
             for resource in resources_info:
-                if resource['name'] == self.name:
+                if isinstance(resource, dict) and 'name' in resource and resource['name'] == self.name:
                     self.status = resource['status']
         else:
             self.status = 'running'
@@ -627,12 +612,10 @@ class Sprite():
         
     def handle_click(self, event):
         if self.spirt_type == "cat":
-            print(self.state)
             # Assuming 'angry' is a state you can check for
             if self.state == 6:  
                 self.show_popup("The cat is angry! Something is wrong!")
         elif self.spirt_type == "gpt_robot":
-            print(self.state)
             if self.state == 6:
                 self.show_popup("The GPT robot is angry! Something is wrong!")
 
@@ -663,22 +646,18 @@ def update_vm_status(azure_info):
                                 resources_info[name] = status
                         except Exception as e:
                             print(f"Error loading resource information for {rg_name}:", e)
-                time.sleep(300)  # Update every 5 minutes
+                time.sleep(10)  # Update every 5 minutes
         except Exception as e:
             print("Error updating VM status:", e)
-            exit()
     else:
         print(f"{selected_cloud_provider} not yet implemented")
                             
-
 def create_sprites():
     root = tk.Tk()
     root.withdraw()  # Hide the main Tk window
-
+    threading.Thread(target=update_vm_status, args=(azure_info,)).start()
     horizontal_distance = 100  # Distance between each sprite
-    #threading.Thread(target=update_vm_status).start()
     if use_cloud_resource:
-        print("in create sprites")
         if selected_cloud_provider == "Azure":
             for info in azure_info:
                 i = 0
@@ -690,7 +669,6 @@ def create_sprites():
                         resources = json.loads(resources_json)
                     except Exception as e:
                         print("Error loading resource information:", e)
-                        exit()
                     try:
                         # Get all resource names:
                         global resource_names
@@ -704,14 +682,12 @@ def create_sprites():
                             resource_types.append(type['type'])
                     except Exception as e:
                         print("Error setting resource information:", e)
-                        exit()
 
             try:
                 # hashtable for resource names and statuses:
                 resources_info = [{"name": name, "status": status, "type": type} for name, status, type in zip(resource_names, resource_statuses, resource_types)]
             except Exception as e:
                 print("Error setting resource information to resource_info:", e)
-                exit()
 
         elif selected_cloud_provider == "AWS":
             print("AWS")
@@ -725,31 +701,12 @@ def create_sprites():
                     sprite_types.append(sprit_type)
         except Exception as e:
             print("Error setting sprite types:", e)
-            exit()
-        
-        print("before creating sprites")
-        print(resource_names)
-        print(resource_statuses)
-        print(resource_types)
-        print(sprite_types)
-
 
     else:
         resource_names = ["vm-Dev01", "kubernetes-Uat-Pod01", "blobStoage-Prod01", "DB-Psql-Test01", "DB-MongoDB-Dev01", "AzureFunction-Uat01", "CDN-Internal01", "IAM-Company", "NLB-Dev01"]
         resource_statuses = ["running", "running", "running", "running", "running", "running", "running", "running", "running"]
         sprite_types = ["cloud_server", "MKS", "storage", "sql", "nosql", "cdn", "faas", "iam", "loadbalancer"]
 
-    #sprite_types = ["cloud_server"]
-    #sprite_types = ["gpt_robot"]
-    #sprite_types = ["cat"]
-    #sprite_types = ["MKS"]
-    #sprite_types = ["storage"]
-    #sprite_types = ["sql"]
-    #sprite_types = ["nosql"]
-    #sprite_types = ["faas"]
-    #sprite_types = ["cdn"]
-    #sprite_types = ["iam"]
-    #sprite_types = ["loadbalancer"]
     sprites = []
 
     try:
@@ -776,7 +733,6 @@ def create_sprites():
 
 if use_cloud_resource:
     start()
-    print(selected_cloud_provider)
     if selected_cloud_provider == "Azure":
         azure_info = init_cloud_resource()
     else:
